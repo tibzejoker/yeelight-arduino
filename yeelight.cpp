@@ -24,7 +24,7 @@ WiFiClient _client;
 IPAddress _ipMulti(239, 255, 255, 250);
 char _packetBuffer[550];
 
-String _location, _support;
+String _location, _support, _ip;
 bool _powered;
 char _server[15];
 
@@ -77,6 +77,7 @@ void Yeelight::parseFeedback(char* buffer, size_t len)
           int colon = _str.indexOf(':', 21) + 1;
           _location = _str.substring(10);
           _str.substring(21, colon).toCharArray(_server, colon - 21);
+          _ip = _server;
           _port = _str.substring(colon).toInt();
         }
         if (_str.startsWith("support: ")) {
@@ -125,4 +126,9 @@ String Yeelight::getSupport()
 String Yeelight::getLocation()
 {
   return _location;
+}
+
+String Yeelight::getIp()
+{
+  return _ip;
 }

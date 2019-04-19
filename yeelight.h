@@ -26,9 +26,11 @@ public:
   void lookup();
   int feedback();
   String getLocation();
+  String getIp();
   String getSupport();
   bool isPowered();
   String sendCommand(String method, String params);
+  
 private:
   void parseFeedback(char* buffer, size_t len);
 };
