@@ -1,70 +1,126 @@
 #include <WiFi.h>
 #include <ArduinoJson.h>
 #include "yeelight.h"
+#include <string>
+
 
 /////////////////////////////////////REMOVE///////////////////////////
 #include "D:\arduino\boxInfos.cpp"
 //////////////////////////////////////////////////////////////////////
 
 /////////////////////////////////////ADD//////////////////////////////
-//char* ssid = "MY_BOX_SSID";
-//char* pass = "MY_BOX_PASSWORD";
+//String ssid = "MY_BOX_SSID";
+//String pass = "MY_BOX_PASSWORD";
 //////////////////////////////////////////////////////////////////////
 
-#define BUTTON_1 15
-#define BUTTON_2 4
+//#define BUTTON_1_PIN "15"
+//#define BUTTON_2_PIN "4"
+#define BUTTON_1_PIN "13"
+#define BUTTON_2_PIN "12"
 
-int maxTics = 200;
+#define BUTTON_3_PIN "13"
+#define BUTTON_4_PIN "12"
 
+const int numberOfButtons = 2;
+
+String buttons[numberOfButtons][4]={
+  //salon
+  //button, state,  ip address, changeValue
+  {BUTTON_1_PIN,  "1","192.168.1.53","n"},
+  
+  //cuisine
+  //button, state,  ip address
+  {BUTTON_2_PIN,  "1","192.168.1.54","n"},
+  
+  //chambre
+  //button, state,  ip address, changeValue
+  //{BUTTON_3_PIN,  "1","192.168.1.55","n"},
+  
+  //salle de bain
+  //button, state,  ip address
+  //{BUTTON_4_PIN,  "1","192.168.1.56","n"}
+  
+  
+  };
+
+
+  
+int maxTics = 1200;
 int tics = 0;
-int ticSalon = 0;
-int ticCuisine = 0;
-bool salonPressed = false;
-bool salonToogled = false;
-const char* ipSalon = "192.168.1.53";
-
-bool cuisinePressed = false;
-const char* ipCuisine = "192.168.1.54";
-bool cuisineToogled = false;
-char* pressed = "";
 
 bool vverbose = false;
 
 StaticJsonBuffer<200> jsonBuffer;
 Yeelight* yeelight;
 
+bool refreshButtons(){
+  //GPIO config
+  int i = 0;
+  int actualState;
+  bool lookup = false;
+  while(i < numberOfButtons){
+    actualState = digitalRead(buttons[i][0].toInt());
+    if (actualState != buttons[i][1].toInt()){
+        buttons[i][1] = String(actualState);
+        buttons[i][3] = "y";
+        digitalWrite(2, HIGH);
+        lookup = true;
+      }
+    i++;
+  }
+  return lookup;
+}
+
 void setup() {
   Serial.begin(115200);
-  pinMode(BUTTON_1, INPUT_PULLUP);
-  pinMode(BUTTON_2, INPUT_PULLUP);
+
+  //GPIO config
+  int i = 0;
+  while(i < numberOfButtons){
+    pinMode(buttons[i][0].toInt(), INPUT_PULLUP);
+    i++;
+  }
+
+  pinMode(2, OUTPUT);
   
   Serial.println("Starting...");
-
   connectToWiFi(ssid, pass);
-
   yeelight = new Yeelight();
-  yeelight->lookup();
+  //refreshButtons();
+  //delay (1000);
+  //yeelight->lookup();
 }
 
 void toogleDevice(){
     if (yeelight->isPowered()) {
-      Serial.println(yeelight->sendCommand("set_power", "[\"off\", \"smooth\", 50]"));
+      Serial.println(yeelight->sendCommand("set_power", "[\"off\", \"smooth\", 500]"));
     }else{
-      Serial.println(yeelight->sendCommand("set_power", "[\"on\", \"smooth\", 50]"));
+      Serial.println(yeelight->sendCommand("set_power", "[\"on\", \"smooth\", 500]"));
     }
+}
+
+int findButton(String addresseIP){
+  int i = 0;
+  while(i < numberOfButtons && i < 100){
+    if (addresseIP == buttons[i][2]){
+      return i;
+    }
+    i++;
+  }
+
+  return -1;
 }
 
 void loop() {
   if (yeelight->feedback()) {
+    String addresseIP = yeelight->getIp();
     
-
-
-    JsonObject& root = jsonBuffer.parseObject(yeelight->sendCommand("get_prop", "[\"power\", \"name\"]"));
-    Serial.println("command done");
-    //Serial.println(yeelight->sendCommand("set_name", "[\"salon\"]"));
-    const char* state = root["result"][0];
-    const char* name = root["result"][1];
     if (vverbose){
+      JsonObject& root = jsonBuffer.parseObject(yeelight->sendCommand("get_prop", "[\"power\", \"name\"]"));
+      Serial.println("command done");
+      //Serial.println(yeelight->sendCommand("set_name", "[\"salon\"]"));
+      const char* state = root["result"][0];
+      const char* name = root["result"][1];
       Serial.print("device: ");
       Serial.println(yeelight->getLocation());
       Serial.print("- power is: ");
@@ -74,62 +130,38 @@ void loop() {
       Serial.print("- name is: ");
       Serial.println(name);  
     }
+
     
-    if (yeelight->getIp() == ipSalon && salonPressed && !salonToogled){
-      salonToogled = true;
+    int i = findButton(addresseIP);
+
+    if (i > -1){
       
-      toogleDevice();
+      if (buttons[i][3] == "y"){
+        Serial.print("Le bouotn pressé est : ");
+        Serial.println(i);
+        toogleDevice();
+        buttons[i][3] = "n";
+        digitalWrite(2, LOW);
+      }
+    }else{
+      if (vverbose){
+        Serial.println("ERROR IN FINDING BUTTON");
+      }
     }
-    
-    if (yeelight->getIp() == ipCuisine && cuisinePressed && !cuisineToogled){
-      cuisineToogled = true;
-      toogleDevice();
-    }
-        
-    pressed = "";
   }
 
-  if (digitalRead(BUTTON_1) == 0 && !salonPressed){
+  if (refreshButtons()){
+    tics -= maxTics/2;
     yeelight->lookup();  
-    pressed = "salon";
-    salonPressed = true;
-    ticSalon = tics;
-    Serial.println(pressed);
   }
-  
-  if (digitalRead(BUTTON_2) == 0 && !cuisinePressed){
-    yeelight->lookup();  
-    pressed = "cuisine";
-    ticCuisine = tics;
-    cuisinePressed = true;
-    Serial.println(pressed);
-  }
+
   tics++;
+  delay (1);
   if (tics == maxTics){
     //Serial.println("TIC");
+    yeelight->lookup();  
     tics = 0;
   }
-  delay(1);
-  
-  if (cuisinePressed){
-    if (ticCuisine == tics){
-      cuisinePressed = false;
-      cuisineToogled = false;
-    }
-    
-  }
-  
-  
-  if (salonPressed){
-    if (ticSalon == tics){
-      salonPressed = false;
-      salonToogled = false;
-    }
-    
-  }
-  
-  
-  
 }
 
 void connectToWiFi(const char * ssid, const char * pwd)
